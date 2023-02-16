@@ -8,16 +8,20 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"time"
 
 	"github.com/lestrrat-go/jwx/jwa"
 	"github.com/lestrrat-go/jwx/jwk"
 	"github.com/lestrrat-go/jwx/jwt"
+	"golang.org/x/crypto/ssh"
 )
 
+const KeyID = "666000001"
+
 func main() {
-	ExampleJWK_ParseToken()
+	Example_GeneratePublicJWKS()
 }
 
 func ExampleJWK_Usage() {
@@ -132,7 +136,7 @@ func ExampleJWK_FromPriv() {
 		key, jwkKey jwk.Key
 		keyset      jwk.Set
 	)
-	const keyID = "666000001"
+
 	/*
 		// GET PRIVATE KEY FROM FILES
 		{
@@ -192,7 +196,7 @@ func ExampleJWK_FromPriv() {
 					log.Printf("failed to create JWK key: %s", err)
 					return
 				}
-				jwkKey.Set(jwk.KeyIDKey, keyID)
+				jwkKey.Set(jwk.KeyIDKey, KeyID)
 			}
 
 		}
@@ -231,7 +235,7 @@ func ExampleJWK_FromPriv() {
 		// Remember, the key must have the proper "kid", and "alg"
 		// If your key does not have "alg", see jwt.InferAlgorithmFromKey()
 		// pubKey.Set(jwk.AlgorithmKey, jwa.RS256)
-		pubKey.Set(jwk.KeyIDKey, keyID)
+		pubKey.Set(jwk.KeyIDKey, KeyID)
 
 		keyset = jwk.NewSet()
 		keyset.Add(pubKey)
@@ -370,7 +374,81 @@ func ExampleJWK_New() {
 	// OUTPUT:
 }
 
-func ExampleJWK_SignByKeysFromURL() {
+func Example_GeneratePrivateJWKS() {
+	bytes, err := ioutil.ReadFile("private-key.pem")
+	if err != nil {
+		panic(err)
+	}
+	privkey, err := ssh.ParseRawPrivateKey(bytes)
+	if err != nil {
+		panic(err)
+	}
+
+	key, err := jwk.New(privkey)
+	if err != nil {
+		fmt.Printf("failed to create RSA key: %s\n", err)
+		return
+	}
+
+	if _, ok := key.(jwk.RSAPrivateKey); !ok {
+		fmt.Printf("expected jwk.RSAPrivateKey, got %T\n", key)
+		return
+	}
+	key.Set(jwk.AlgorithmKey, "RS256")
+	key.Set(jwk.KeyIDKey, KeyID)
+	key.Set(jwk.KeyUsageKey, "sig")
+
+	buf, err := json.MarshalIndent(key, "", "  ")
+	if err != nil {
+		fmt.Printf("failed to marshal key into JSON: %s\n", err)
+		return
+	}
+	fmt.Printf("PRIVATE KEY SET: \n%s\n", buf)
+}
+
+func Example_GeneratePublicJWKS() {
+	var (
+		privkey interface{}
+	)
+
+	// GET PRIVATE KEY
+	{
+		bytes, err := ioutil.ReadFile("private-key.pem")
+		if err != nil {
+			panic(err)
+		}
+		privkey, err = ssh.ParseRawPrivateKey(bytes)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	{
+		// k := NewRSAPublicKey()
+		pkey := privkey.(*rsa.PrivateKey)
+		pubKey, err := jwk.New(pkey.PublicKey)
+		if err != nil {
+			fmt.Printf("failed to create JWK: %s\n", err)
+			return
+		}
+		// Remember, the key must have the proper "kid", and "alg"
+		// If your key does not have "alg", see jwt.InferAlgorithmFromKey()
+		// pubKey.Set(jwk.AlgorithmKey, jwa.RS256)
+		pubKey.Set(jwk.KeyIDKey, KeyID)
+
+		keyset := jwk.NewSet()
+		keyset.Add(pubKey)
+
+		buf, err := json.MarshalIndent(keyset, "", "  ")
+		if err != nil {
+			fmt.Printf("failed to marshal key into JSON: %s\n", err)
+			return
+		}
+		fmt.Printf("PUBLIC KEY SET: \n%s\n", buf)
+	}
+}
+
+func Example_JWKSignByKeysFromURL() {
 	// Get private key
 	jwkVal, err := getPrivateFromJWKS()
 	if err != nil {
@@ -397,7 +475,7 @@ func ExampleJWK_SignByKeysFromURL() {
 	fmt.Println(string(signed)) // eyJhbGciOiJSUzI1NiIsImtpZCI6IjBYMjlBIiwidHlwIjoiSldUIn0.eyJkYXRhIjp7InVzZSI6ImFzdXV1In0sImlhdCI6MTY3NjQwNDE1OCwiaXNzIjoiZ2l0aHViLmNvbS9sZXN0cnJhdC1nby9qd3gifQ.M7rRvFG85Ywkg0h_DdAAhvCXm4WaPAl8U8d7z70lCTht69rgoMmKrU-UEGXQKIWAi2wDfo5psHXn0ROALd5ynPNNVz-74vNG3SCwiy2RaapZZWQeFufgZpbZTTJk4l9S5tpvPa7jAsEl05bjz4Jy6qC_iJD8CWZizJ4o6H3yEJZxhGCtbaFS2gIpeDS1QwbL972c84aA6V856pWqPMDlXPNh_QmYhN7833XwbGYsL_GoN7NdWLOOCXaj4RRpyJCohlrBkB0QFvSoeoyTVpwHrrJ-AKNXI7e8gTaSkhwcPPIJ2-_x0HWc_D47-s2Ppc0CxmT0c_whnGHZS8Bw4q2h5nbBP__i_VsZCniknEwGD5jR_mo8eKWUsSciACdcBxb2uUNSCm-G7ewpE2K0JAkIRTTZJhgFkrzBe8axdfYQcs93CrUDJlPtPgBBAq24Tzn7PTtzrNQ8gOXF9gBZ39g_UoKjf8aQXLk1DuhhL3iDED12ljyx8yjAoYkZujtyVfzR
 }
 
-func ExampleJWK_ParseToken() {
+func Example_JWKParseToken() {
 	var signed = "eyJhbGciOiJSUzI1NiIsImtpZCI6IjY2NjAwMDAwMSIsInR5cCI6IkpXVCJ9.eyJkYXRhIjp7InVzZSI6ImFzdXV1In0sImlhdCI6MTY3NjQ1NjA2MywiaXNzIjoiZ2l0aHViLmNvbS9sZXN0cnJhdC1nby9qd3gifQ.e6AGPS3iJrafwY74sGO7-5trndm7WCuOIsYX3hoDwOZ2M1cY8FSDoV83u4wrwq1qx9GujDE3PlCelKcHhxatD9VB1qDyO3xFXZHUkGsAo6PaykKHlasqw9-5g0eBrp3vl2JEJAl4mYPe_wx1s-OAwR7Sa-vSp17-pgKxk9ghaNJhDYRVnm2oizeLJ3nQL7aJowVnEK97rOczTaEOAlcxlN5LKETNkeeybjZPsvfDv2Ylc9UtP8CnPsXWtwPyRoT3wfD9K1HpkX8hIU9OK_pXsBJX9-1XKsIWH8o7mDm7OtePuyHU1LYVq0HZasDp8alJ7OJPoryM1tGudBl208fndw"
 	keyset, err := getPublicFromJWKS()
 	if err != nil {
@@ -427,7 +505,7 @@ func getPrivateFromJWKS() (jwk.Key, error) {
 	var (
 		key, jwkKey jwk.Key
 	)
-	const keyID = "666000001"
+
 	set, err := jwk.Fetch(context.Background(), "https://raw.githubusercontent.com/yanuar-nc/yanuar-nc/main/jwk-priv.json")
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse JWK: %s", err)
@@ -446,7 +524,7 @@ func getPrivateFromJWKS() (jwk.Key, error) {
 			if err != nil {
 				return nil, fmt.Errorf("failed to create JWK key: %s", err)
 			}
-			jwkKey.Set(jwk.KeyIDKey, keyID)
+			jwkKey.Set(jwk.KeyIDKey, KeyID)
 		}
 	}
 	return jwkKey, nil
