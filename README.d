@@ -1,0 +1,1 @@
+step crypto jwk create rsa.pub.json rsa.json --kty=RSA --alg=RSA --use=RS256 --kid=0x29a
